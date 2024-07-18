@@ -1,0 +1,103 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: 'AWS CloudFormation Template to deploy a Lambda function with an API Gateway'
+
+Resources:
+  # IAM Role for Lambda
+  LambdaExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service: 'lambda.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: 'LambdaBasicExecution'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: 'arn:aws:logs:*:*:*'
+
+  # Lambda Function
+  MyLambdaFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Handler: 'index.handler'
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            const response = {
+              statusCode: 200,
+              body: JSON.stringify('Hello from Lambda!'),
+            };
+            return response;
+          };
+      Runtime: 'nodejs14.x'
+
+  # API Gateway
+  MyApiGateway:
+    Type: 'AWS::ApiGateway::RestApi'
+    Properties:
+      Name: 'MyApi'
+
+  # API Gateway Resource
+  MyApiResource:
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      ParentId: !GetAtt MyApiGateway.RootResourceId
+      PathPart: 'hello'
+      RestApiId: !Ref MyApiGateway
+
+  # API Gateway Method
+  MyApiMethod:
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      AuthorizationType: 'NONE'
+      HttpMethod: 'GET'
+      ResourceId: !Ref MyApiResource
+      RestApiId: !Ref MyApiGateway
+      Integration:
+        IntegrationHttpMethod: 'POST'
+        Type: 'AWS_PROXY'
+        Uri:
+          Fn::Sub:
+            - 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations'
+            - LambdaArn: !GetAtt MyLambdaFunction.Arn
+
+  # API Gateway Deployment
+  MyApiDeployment:
+    Type: 'AWS::ApiGateway::Deployment'
+    Properties:
+      RestApiId: !Ref MyApiGateway
+      StageName: 'prod'
+    DependsOn: MyApiMethod
+
+  # Lambda Permission
+  LambdaPermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !GetAtt MyLambdaFunction.Arn
+      Principal: 'apigateway.amazonaws.com'
+      SourceArn:
+        Fn::Sub:
+          - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*/*'
+          - ApiId: !Ref MyApiGateway
+
+
+# NOTE: Template validated
+# aws cloudformation validate-template --template-body file://main.yml
+#Capabilities:
+#- CAPABILITY_IAM
+#CapabilitiesReason: 'The following resource(s) require capabilities: [AWS::IAM::Role]'
+#Description: AWS CloudFormation Template to deploy a Lambda function with an API Gateway
+#Parameters: []
