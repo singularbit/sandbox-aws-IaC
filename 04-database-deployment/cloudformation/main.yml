@@ -1,0 +1,87 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: 'AWS CloudFormation Template to set up RDS instance with Security Groups and Subnet Groups'
+
+Resources:
+  # VPC
+  MyVPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: '10.0.0.0/16'
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+      Tags:
+        - Key: Name
+          Value: MyVPC
+
+  # Subnet 1
+  MySubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: '10.0.1.0/24'
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: MySubnet1
+
+  # Subnet 2
+  MySubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: '10.0.2.0/24'
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: MySubnet2
+
+  # RDS Subnet Group
+  MyDBSubnetGroup:
+    Type: 'AWS::RDS::DBSubnetGroup'
+    Properties:
+      DBSubnetGroupDescription: 'My DB subnet group'
+      SubnetIds:
+        - !Ref MySubnet1
+        - !Ref MySubnet2
+      Tags:
+        - Key: Name
+          Value: MyDBSubnetGroup
+
+  # Security Group
+  MyDBSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: 'Allow MySQL traffic'
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: 'tcp'
+          FromPort: '3306'
+          ToPort: '3306'
+          CidrIp: '0.0.0.0/0'
+      Tags:
+        - Key: Name
+          Value: MyDBSecurityGroup
+
+  # RDS Instance
+  MyDBInstance:
+    Type: 'AWS::RDS::DBInstance'
+    Properties:
+      DBInstanceClass: 'db.t2.micro'
+      AllocatedStorage: '20'
+      DBName: 'mydatabase'
+      Engine: 'mysql'
+      MasterUsername: 'admin'
+      MasterUserPassword: 'admin123'
+      VPCSecurityGroups:
+        - !Ref MyDBSecurityGroup
+      DBSubnetGroupName: !Ref MyDBSubnetGroup
+      BackupRetentionPeriod: 7
+      PubliclyAccessible: false
+
+
+# NOTE: Template validated
+# aws cloudformation validate-template --template-body file://main.yml
+#Description: AWS CloudFormation Template to set up RDS instance with Security Groups
+#  and Subnet Groups
+#Parameters: []
