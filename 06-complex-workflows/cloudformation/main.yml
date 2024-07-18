@@ -1,0 +1,179 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: 'AWS CloudFormation Template to setup a CI/CD Pipeline using AWS CodePipeline, CodeBuild, and CodeDeploy'
+
+Resources:
+  # S3 Bucket for CodePipeline Artifacts
+  PipelineArtifactBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: 'my-pipeline-artifact-bucket'
+
+  # CodePipeline Role
+  CodePipelineServiceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service: 'codepipeline.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: 'CodePipelinePolicy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action:
+                  - 's3:*'
+                  - 'codebuild:*'
+                  - 'codedeploy:*'
+                Resource: '*'
+
+  # CodeBuild Role
+  CodeBuildServiceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service: 'codebuild.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: 'CodeBuildPolicy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action:
+                  - 's3:*'
+                  - 'logs:*'
+                Resource: '*'
+
+  # CodeDeploy Role
+  CodeDeployServiceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service: 'codedeploy.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: 'CodeDeployPolicy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action:
+                  - 's3:*'
+                  - 'ec2:*'
+                  - 'autoscaling:*'
+                  - 'codedeploy:*'
+                  - 'logs:*'
+                Resource: '*'
+
+  # CodeBuild Project
+  CodeBuildProject:
+    Type: 'AWS::CodeBuild::Project'
+    Properties:
+      Name: 'MyCodeBuildProject'
+      Source:
+        Type: 'CODEPIPELINE'
+      Artifacts:
+        Type: 'CODEPIPELINE'
+      Environment:
+        ComputeType: 'BUILD_GENERAL1_SMALL'
+        Image: 'aws/codebuild/standard:4.0'
+        Type: 'LINUX_CONTAINER'
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+
+  # CodeDeploy Application
+  CodeDeployApplication:
+    Type: 'AWS::CodeDeploy::Application'
+    Properties:
+      ApplicationName: 'MyCodeDeployApplication'
+
+  # CodeDeploy Deployment Group
+  CodeDeployDeploymentGroup:
+    Type: 'AWS::CodeDeploy::DeploymentGroup'
+    Properties:
+      ApplicationName: !Ref CodeDeployApplication
+      DeploymentGroupName: 'MyDeploymentGroup'
+      ServiceRoleArn: !GetAtt CodeDeployServiceRole.Arn
+      AutoScalingGroups: []
+      DeploymentConfigName: 'CodeDeployDefault.OneAtATime'
+      Ec2TagFilters:
+        - Key: 'Name'
+          Value: 'MyEC2Instance'
+          Type: 'KEY_AND_VALUE'
+
+  # CodePipeline
+  MyPipeline:
+    Type: 'AWS::CodePipeline::Pipeline'
+    Properties:
+      Name: 'MyPipeline'
+      RoleArn: !GetAtt CodePipelineServiceRole.Arn
+      ArtifactStore:
+        Type: 'S3'
+        Location: !Ref PipelineArtifactBucket
+      Stages:
+        - Name: 'Source'
+          Actions:
+            - Name: 'Source'
+              ActionTypeId:
+                Category: 'Source'
+                Owner: 'AWS'
+                Provider: 'S3'
+                Version: '1'
+              OutputArtifacts:
+                - Name: 'SourceArtifact'
+              Configuration:
+                S3Bucket: 'my-source-bucket'
+                S3ObjectKey: 'source.zip'
+              RunOrder: 1
+        - Name: 'Build'
+          Actions:
+            - Name: 'Build'
+              ActionTypeId:
+                Category: 'Build'
+                Owner: 'AWS'
+                Provider: 'CodeBuild'
+                Version: '1'
+              InputArtifacts:
+                - Name: 'SourceArtifact'
+              OutputArtifacts:
+                - Name: 'BuildArtifact'
+              Configuration:
+                ProjectName: !Ref CodeBuildProject
+              RunOrder: 1
+        - Name: 'Deploy'
+          Actions:
+            - Name: 'Deploy'
+              ActionTypeId:
+                Category: 'Deploy'
+                Owner: 'AWS'
+                Provider: 'CodeDeploy'
+                Version: '1'
+              InputArtifacts:
+                - Name: 'BuildArtifact'
+              Configuration:
+                ApplicationName: !Ref CodeDeployApplication
+                DeploymentGroupName: !Ref CodeDeployDeploymentGroup
+              RunOrder: 1
+
+
+# NOTE: Template validated
+# aws cloudformation validate-template --template-body file://main.yml
+#Capabilities:
+#- CAPABILITY_IAM
+#CapabilitiesReason: 'The following resource(s) require capabilities: [AWS::IAM::Role]'
+#Description: AWS CloudFormation Template to setup a CI/CD Pipeline using AWS CodePipeline,
+#  CodeBuild, and CodeDeploy
+#Parameters: []
